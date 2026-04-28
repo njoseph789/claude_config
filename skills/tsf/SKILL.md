@@ -8,6 +8,11 @@ description: An end-to-end framework for exploratory data analysis, preprocessin
 ## Description
 An end-to-end framework for exploratory data analysis, preprocessing, modeling, validation, and forecasting of time series data. Apply this methodology sequentially whenever requested to analyze time series datasets or build forecasting models.
 
+## Global Data Constraints: Strict Data Isolation
+- **No External Data:** You must strictly use ONLY the dataset explicitly provided or specified in the prompt.
+- **No Automatic Exogenous Variables:** Do not search for, generate, or automatically integrate any external datasets, macroeconomic indicators, or exogenous variables unless explicitly instructed to do so. 
+- **Scope of Analysis:** All additions of exogenous variables will be handled manually by the user at a later stage. Confine all EDA, preprocessing, modeling, and forecasting strictly to the endogenous variables and features already present in the provided file.
+
 ## Phase 1: Exploratory Data Analysis (EDA)
 1. **Initial Data Inspection:**
    - Load and examine data structure (shape, dtypes, missing values).
@@ -89,3 +94,4 @@ An end-to-end framework for exploratory data analysis, preprocessing, modeling, 
 - [ ] Omitting historical data in final forecasting plots.
 - [ ] Omitting confidence intervals.
 - [ ] Poorly specifying matrices (Kalman) or choosing incorrect state counts (HMM).
+- [ ] Pulling in unrequested external datasets, features, or exogenous variables.
