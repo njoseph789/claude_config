@@ -17,6 +17,7 @@ Perform comprehensive exploratory data analysis (EDA) on scientific data files a
 - Comprehensive format-specific metadata extraction
 - Data quality and integrity assessment
 - Statistical summaries and distributions
+- **Automatic time series detection and visualization** — plots raw time series for each variable when datetime columns are identified
 - Visualization recommendations
 - Downstream analysis suggestions
 - Markdown report generation
@@ -294,13 +295,19 @@ python scripts/eda_analyzer.py <filepath> [output.md]
 **Option B: Custom analysis in the conversation**
 Based on the format information from the reference file, perform appropriate analysis:
 
-For tabular data (CSV, TSV, Excel):
+For tabular data (CSV, TSV, Excel, Parquet):
 - Load with pandas
 - Check dimensions, data types
 - Analyze missing values
 - Calculate summary statistics
 - Identify outliers
 - Check for duplicates
+- **Time Series Detection:** Automatically detect datetime columns and temporal ordering
+- **Time Series Visualization:** If datetime column(s) exist, generate inline plots of raw time series for each numeric variable
+  - X-axis: timestamp
+  - Y-axis: variable value
+  - Multiple subplots if many variables (max 12 per figure for readability)
+  - Include any obvious trends, gaps, or anomalies in key findings
 
 For sequence data (FASTA, FASTQ):
 - Count sequences
