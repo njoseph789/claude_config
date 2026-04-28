@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Bash(conda *)",
+      "Bash(python *)",
+      "Bash(jupyter *)",
+      "Bash(pip *)",
+      "Bash(mkdir *)",
+      "Bash(mv *)",
+      "Bash(cp *)"
+    ],
+    "defaultMode": "auto"
+  }
+}
