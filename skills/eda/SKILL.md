@@ -1,5 +1,5 @@
 ---
-name: exploratory-data-analysis
+name: eda
 description: Perform comprehensive exploratory data analysis on scientific data files across 200+ file formats. This skill should be used when analyzing any scientific data file to understand its structure, content, quality, and characteristics. Automatically detects file type and generates detailed markdown reports with format-specific analysis, quality metrics, and downstream analysis recommendations. Covers chemistry, bioinformatics, microscopy, spectroscopy, proteomics, metabolomics, and general scientific data formats.
 license: MIT license
 metadata:
@@ -77,7 +77,176 @@ Arrays, tables, hierarchical data, compressed archives, and common scientific fo
 
 **Reference file:** `references/general_scientific_formats.md`
 
-## Workflow
+## Input Modes
+
+The skill operates in two modes depending on the input:
+
+| Input | Mode |
+|---|---|
+| Single file path | **Single-file mode** — run EDA directly, no subagents |
+| Directory path OR 2+ file paths | **Orchestration mode** — dual-subagent parallel EDA |
+
+---
+
+## ORCHESTRATION MODE (2+ datasets)
+
+Triggered when the user provides a directory path or explicitly lists multiple files.
+
+### Step 0: Permission Check (MUST run before anything else)
+
+Before creating any folders or spawning any agents, verify that `Bash` is allowed in the project settings so subagents can execute Python and shell commands.
+
+**Check procedure:**
+
+1. Read `.claude/settings.json` in the current working directory (if it exists).
+2. Read `~/.claude/settings.json` (global settings).
+3. A Bash permission is considered **available** if ANY of the following are true across either file:
+   - `"Bash"` (bare, no args) appears in `permissions.allow`
+   - `"Bash(*)"` appears in `permissions.allow`
+   - `permissions.defaultMode` is `"dontAsk"`, `"auto"`, `"bypassPermissions"`, or `"acceptEdits"`
+
+**If Bash permission IS available:** proceed to Step 1.
+
+**If Bash permission is NOT available:** stop all work and inform the user:
+
+> Bash permission is not currently enabled for background subagents in this project. Without it, the EDA subagents cannot execute Python to load and analyze data files, and cannot generate `.ipynb` notebook or `.md` report files.
+>
+> To fix this, I need to add the following to `.claude/settings.json`:
+> ```json
+> {
+>   "permissions": {
+>     "allow": ["Bash"],
+>     "defaultMode": "auto"
+>   }
+> }
+> ```
+> `"Bash"` allows all shell commands in this project. `"defaultMode": "auto"` means foreground sessions still prompt you, but background subagents auto-approve pre-allowed tools.
+>
+> **May I add these permissions to `.claude/settings.json` now?**
+
+Only proceed after explicit user approval. Then use the `update-config` skill or write the settings directly, then continue to Step 1.
+
+---
+
+### Step 1: Discover & Enumerate Datasets
+
+If input is a **directory path**: glob all files in that directory (non-recursive) that are data files (csv, parquet, json, xlsx, hdf5, zarr, npy, npz, nc, fits, mat, fasta, fastq, sam, bam, vcf, bed, gff, pdb, mol, sdf, tif, nd2, czi, mzML, etc.).
+
+If input is **multiple explicit file paths**: use that list directly.
+
+Count total datasets `N`.
+
+---
+
+### Step 2: Create Workspace
+
+```bash
+mkdir -p EDA/Notebooks EDA/Reports
+```
+
+Final expected structure after the run:
+```
+EDA/
+├── master_eda_report.md
+├── Notebooks/    ← all .ipynb files
+└── Reports/      ← all per-dataset *_eda_report.md files
+```
+
+---
+
+### Step 3: Split Into Two Queues
+
+Split the `N` datasets across exactly 2 agents:
+
+| N | Agent 1 gets | Agent 2 gets |
+|---|---|---|
+| Even | N/2 | N/2 |
+| Odd | ceil(N/2) | floor(N/2) — one fewer |
+
+Example: 10 files → 5 + 5. 7 files → 4 + 3. 3 files → 2 + 1.
+
+---
+
+### Step 4: Spawn Two Background Subagents
+
+Use the `Agent` tool with `run_in_background: true` for BOTH agents. Spawn them in the **same message** (one tool call each) so they run in parallel.
+
+Each agent prompt must include:
+- The working directory (absolute path)
+- Their assigned file list (explicit paths)
+- Instruction to invoke the `eda` skill (via Skill tool, skill="eda") for each file
+- Instruction to save `.ipynb` files → `EDA/Notebooks/`
+- Instruction to save `*_eda_report.md` files → `EDA/Reports/`
+- Instruction to return a final markdown summary of all datasets processed
+
+**Template agent prompt:**
+```
+You are an EDA subagent. Working directory: <ABSOLUTE_CWD>
+
+Bash is pre-approved — use it freely. Conda env: general (Python 3.11).
+
+Your assigned datasets:
+1. <file1>
+2. <file2>
+...
+
+For EACH dataset, in order:
+1. Invoke the `eda` skill using the Skill tool (skill="eda", args="<filepath>").
+2. After each invocation, move any generated .ipynb files to: <CWD>/EDA/Notebooks/
+3. Move any generated *_eda_report.md files to: <CWD>/EDA/Reports/
+
+Use this Bash snippet to relocate generated files after each eda call:
+  find "<CWD>" -maxdepth 2 -name "*.ipynb" ! -path "*/EDA/Notebooks/*" \
+    -exec mv {} "<CWD>/EDA/Notebooks/" \;
+  find "<CWD>" -maxdepth 2 -name "*_eda_report.md" ! -path "*/EDA/Reports/*" \
+    -exec mv {} "<CWD>/EDA/Reports/" \;
+
+If the eda skill does not produce sufficient output for a file, supplement
+with direct Python profiling via Bash:
+  conda run -n general python -c "
+  import pandas as pd
+  df = pd.read_parquet('<filepath>')   # or read_csv, etc.
+  print(df.shape, df.dtypes, df.describe(include='all').to_string())
+  print(df.isnull().sum())
+  "
+
+After all files are processed, return a single comprehensive markdown
+summary covering each dataset: shape, key columns, distributions, notable
+patterns, data quality issues, and domain relevance.
+
+Return ONLY the final markdown summary.
+```
+
+---
+
+### Step 5: Monitor & Aggregate
+
+Wait for both background agents to complete (notifications arrive automatically).
+
+Once both return:
+1. Collect both markdown summaries.
+2. Verify notebooks and reports are in the correct subdirectories.
+3. If any `*_eda_report.md` files still exist outside `EDA/Reports/`, move them.
+4. Write `EDA/master_eda_report.md` combining both summaries under a unified structure:
+   - Header with date, dataset count, system context
+   - Dataset inventory table
+   - Per-dataset sections (all datasets, ordered)
+   - Cross-dataset integration notes (join keys, temporal alignment, data quality summary)
+   - Recommended analysis workflow (code snippet)
+5. Confirm final structure:
+   ```
+   EDA/
+   ├── master_eda_report.md        ← compiled, always here
+   ├── Notebooks/<name>_eda.ipynb  ← one per dataset
+   └── Reports/<name>_eda_report.md ← one per dataset
+   ```
+6. Confirm root directory was not modified (no new files outside EDA/).
+
+---
+
+## SINGLE-FILE MODE (1 dataset)
+
+No subagents. Run EDA directly in the current conversation.
 
 ### Step 1: File Type Detection
 
