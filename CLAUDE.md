@@ -3,3 +3,4 @@
 
 ## Notebook Development
 * When creating Jupyter notebooks, **do not run bash commands** to verify/validate execution. User will test notebooks via IDE directly.
+* **Imports in first cell only.** All `import` statements must be placed in the very first cell of the notebook. Never add imports in the cell where they are first used.
